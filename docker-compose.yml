@@ -1,0 +1,14 @@
+services:
+  desktop:
+    build: .
+    container_name: debian-trixie-vnc-lxde-codium
+    ports:
+      - "5900:5900"
+    environment:
+      - VNC_PASSWORD=${VNC_PASSWORD}
+      - VNC_GEOMETRY=${VNC_GEOMETRY:-1920x1080}
+      - VNC_DEPTH=${VNC_DEPTH:-24}
+    # Uncomment to persist home if desired:
+    # volumes:
+    #   - ./data/home:/home/user
+    restart: unless-stopped

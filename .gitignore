@@ -1,0 +1,19 @@
+# General
+*.log
+*.swp
+*.bak
+.DS_Store
+
+# Docker
+*.pid
+.env
+.vscode/
+__pycache__/
+
+# Node/npm (if later used)
+node_modules/
+
+# Python (if you ever use Python inside container)
+*.pyc
+__pycache__/
+
