@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
-# Simple xstartup for LXDE under VNC/Xvfb
+set -e
+
 xrdb "$HOME/.Xresources" >/dev/null 2>&1 || true
+
 export XDG_RUNTIME_DIR="/tmp/xdg-runtime-$(id -u)"
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
-lxsession &
+
+exec dbus-launch --exit-with-session bash -lc '
+  lxpanel &
+  pcmanfm --desktop --profile LXDE &
+  exec openbox-session
+'

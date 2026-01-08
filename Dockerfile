@@ -1,4 +1,3 @@
-# Debian Trixie Slim base (ARM64-friendly)
 FROM debian:trixie-slim
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -6,31 +5,51 @@ ENV DEBIAN_FRONTEND=noninteractive \
     HOME=/home/user \
     DISPLAY=:0
 
-# Base packages and LXDE desktop components
+# Base packages (swap falkon -> firefox-esr) + add theme tool + dbus helpers
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        lxde-core lxterminal pcmanfm \
-        x11vnc xvfb dbus-x11 \
-        sudo curl gnupg wget ca-certificates \
-        apt-transport-https software-properties-common \
-        dumb-init && \
+        lxde-core at-spi2-core lxterminal pcmanfm \
+        lxappearance \
+        x11vnc xvfb dbus-x11 dbus-user-session \
+        xauth \
+        sudo curl gnupg wget ca-certificates apt-transport-https \
+        dumb-init \
+        firefox-esr \
+        papirus-icon-theme && \
     rm -rf /var/lib/apt/lists/*
 
-# Papirus icon theme (via Ubuntu Jammy PPA repo is acceptable for theme assets)
-RUN echo 'deb http://ppa.launchpad.net/papirus/papirus/ubuntu jammy main' > /etc/apt/sources.list.d/papirus-ppa.list && \
-    wget -qO /etc/apt/trusted.gpg.d/papirus-ppa.asc 'https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x9461999446FAF0DF770BFC9AE58A9D36647CAE7F' && \
-    apt-get update && apt-get install -y --no-install-recommends papirus-icon-theme && \
-    rm -rf /var/lib/apt/lists/*
+# Optional: you can remove this entirely if you want.
+# Keeping it does no harm, but doing it at runtime often fails on some engines.
+RUN mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix
 
-# VSCodium (arm64) from maintained repo (paulcarroty)
-RUN curl -fsSL https://gitlab.com/paulcarroty/vscodium-deb-rpm-repo/raw/master/pub.gpg | gpg --dearmor -o /usr/share/keyrings/vscodium-archive-keyring.gpg && \
+# VSCodium repo
+RUN curl -fsSL https://gitlab.com/paulcarroty/vscodium-deb-rpm-repo/raw/master/pub.gpg \
+      | gpg --dearmor -o /usr/share/keyrings/vscodium-archive-keyring.gpg && \
     echo "deb [signed-by=/usr/share/keyrings/vscodium-archive-keyring.gpg arch=arm64] https://paulcarroty.gitlab.io/vscodium-deb-rpm-repo/debs/ vscodium main" \
-    > /etc/apt/sources.list.d/vscodium.list && \
+      > /etc/apt/sources.list.d/vscodium.list && \
     apt-get update && apt-get install -y --no-install-recommends codium && \
     rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
-RUN useradd -m -s /bin/bash "${USER}" && echo "${USER}:${USER}" | chpasswd && adduser "${USER}" sudo
+# Create user + set passwords + passwordless sudo
+RUN useradd -m -s /bin/bash "${USER}" && \
+    echo "${USER}:${USER}" | chpasswd && \
+    echo "root:root" | chpasswd && \
+    adduser "${USER}" sudo && \
+    printf '%s\n' "${USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/010_${USER}_nopasswd && \
+    chmod 0440 /etc/sudoers.d/010_${USER}_nopasswd
+
+# Force Papirus as the GTK icon theme (LXDE reads GTK settings)
+RUN mkdir -p ${HOME}/.config/gtk-3.0 && \
+    printf '%s\n' \
+      '[Settings]' \
+      'gtk-icon-theme-name=Papirus' \
+      'gtk-theme-name=Adwaita' \
+      > ${HOME}/.config/gtk-3.0/settings.ini && \
+    printf '%s\n' \
+      'gtk-icon-theme-name="Papirus"' \
+      'gtk-theme-name="Adwaita"' \
+      > ${HOME}/.gtkrc-2.0 && \
+    chown -R ${USER}:${USER} ${HOME}
 
 # VNC config and startup scripts
 RUN mkdir -p ${HOME}/.vnc
@@ -43,7 +62,5 @@ USER ${USER}
 WORKDIR ${HOME}
 
 EXPOSE 5900
-
-# Use dumb-init for proper signal handling, then our entrypoint
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 CMD ["/usr/local/bin/entrypoint.sh"]
