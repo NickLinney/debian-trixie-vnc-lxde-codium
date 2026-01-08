@@ -1,14 +1,35 @@
+# docker-compose.yml
 services:
   desktop:
-    build: .
+    build:
+      context: .
+      args:
+        # Pulled from .env at build time (or your shell environment)
+        USER_PASSWORD: ${USER_PASSWORD}
+        ROOT_PASSWORD: ${ROOT_PASSWORD}
+
     container_name: debian-trixie-vnc-lxde-codium
+
     ports:
-      - "5900:5900"
+      # Network-ready: expose SSH for tunneling
+      - "2222:22"
+
+      # Optional (host-only direct VNC): uncomment if you want to connect from the Docker host
+      # without SSH. This does NOT expose VNC to your LAN/WAN.
+      - "127.0.0.1:5900:5900"
+
+    # Helps eliminate Firefox “some security features may offer less protection…” by enabling
+    # unprivileged user namespaces (when supported by the host).
+    sysctls:
+      - kernel.unprivileged_userns_clone=1
+
+    # Optional quality-of-life
     environment:
-      - VNC_PASSWORD=${VNC_PASSWORD}
-      - VNC_GEOMETRY=${VNC_GEOMETRY:-1920x1080}
-      - VNC_DEPTH=${VNC_DEPTH:-24}
-    # Uncomment to persist home if desired:
-    # volumes:
-    #   - ./data/home:/home/user
+      VNC_PASSWORD: "changeme"
+      VNC_GEOMETRY: "1920x1080"
+      VNC_DEPTH: "24"
+
+    # Optional, but recommended for Electron apps / browsers
+    shm_size: "512m"
+
     restart: unless-stopped

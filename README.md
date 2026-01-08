@@ -1,54 +1,209 @@
-# Debian Trixie + LXDE + VSCodium over VNC
+# Debian Trixie LXDE Desktop (VNC + SSH + VSCodium)
 
-A minimal Debian (trixie-slim) desktop container running **LXDE** with **VSCodium**, accessible via **x11vnc**. 
-Designed for Apple Silicon (ARM64) hosts but should work on any arm64-capable Docker environment.
+A **minimal, headless Debian (trixie-slim) desktop environment** running **LXDE**, **VSCodium**, and **Firefox ESR**, designed to be accessed remotely over **VNC**, with **SSH tunneling for secure network use**.
 
-> **Note on “59 Hz”**: Virtual displays created with `Xvfb` don’t expose a real refresh rate like physical GPUs. 
-> You can set **resolution** and **color depth** (e.g., `1920x1080` and `24-bit`). Your VNC viewer’s perceived 
-> frame rate depends on encoding and network conditions—not a fixed “59 Hz”.
+This project targets **ARM64 (Apple Silicon)** but should work on any Docker host capable of running `debian:trixie-slim`.
 
-## Features
-- Debian `trixie-slim` base with **LXDE** lightweight desktop.
-- **Papirus** icon theme.
-- **VSCodium** installed from the maintained `.deb` repository.
-- **x11vnc** + **Xvfb** for headless desktop access.
-- Config via `.env` for VNC password, resolution, and depth.
-- `docker-compose` for easy run/stop.
+---
 
-## Quick Start
+## 🚀 Quickstart
 
-1. **Create your `.env`** by copying the sample:
-   ```bash
-   cp sample.env .env
-   # then edit .env to set a strong VNC password
-   ```
+This repository provides a **network-ready, containerized Debian Trixie LXDE desktop** with:
 
-2. **Build and run**:
-   ```bash
-   docker compose up --build
-   ```
+* VNC remote desktop (headless, via Xvfb)
+* SSH for secure tunneling
+* VSCodium (container-safe Electron configuration)
+* Firefox ESR (privacy-hardened, no first-run UI)
+* Minimal LXDE environment with Papirus icons
+* Passwordless sudo for the desktop user
 
-3. **Connect with a VNC client** (e.g., VNC Viewer, Remmina):
-   * Host: `localhost`
-   * Port: `5900`
-   * Password: the value of `VNC_PASSWORD` from your `.env`
+No `git` is required. Docker and Docker Compose are sufficient.
 
-4. **Stop**:
-   ```bash
-   docker compose down
-   ```
+---
 
-## Environment Variables
+### 1️⃣ Download the Repository (No Git Required)
 
-Defined in `.env`:
+Run the following command on your host system:
 
-* `VNC_PASSWORD` (required): VNC password for **x11vnc**. Choose a strong one.
-* `VNC_GEOMETRY` (default: `1920x1080`): Virtual desktop resolution (WIDTHxHEIGHT).
-* `VNC_DEPTH` (default: `24`): Color depth (16/24/32 typical).
+```bash
+curl -fsSL https://raw.githubusercontent.com/NickLinney/debian-trixie-vnc-lxde-codium/main/install.sh | bash
+```
 
-> Refresh rate (e.g., “59 Hz”) is **not applicable** to `Xvfb`.
+This will:
 
-## File Layout
+* Download the repository via HTTPS
+* Extract it into a local directory
+* Clean up the temporary archive
+
+After completion:
+
+```bash
+cd debian-trixie-vnc-lxde-codium
+```
+
+---
+
+### 2️⃣ Configuration (Optional)
+
+#### 🔹 No-Config / Quick Test Mode (Defaults)
+
+If you just want to **test the container immediately**, you can skip configuration entirely.
+
+The repository includes a `sample.env` file with safe defaults, and the install script will automatically generate `.env` from it if one does not exist.
+
+Default credentials in this mode:
+
+* **Desktop user:** `user`
+* **User password:** `changeme`
+* **Root password:** `changeme`
+* **VNC password:** `changeme`
+
+You can proceed directly to Step 3.
+
+---
+
+#### 🔹 Custom Configuration (Optional)
+
+If you want custom passwords or display settings:
+
+```bash
+cp sample.env .env
+```
+
+Edit `.env` as desired, for example:
+
+```env
+# Desktop user & root passwords (used for SSH + sudo)
+USER_PASSWORD=yourpassword
+ROOT_PASSWORD=yourpassword
+
+# VNC settings
+VNC_PASSWORD=yourpassword
+VNC_GEOMETRY=1920x1080
+VNC_DEPTH=24
+```
+
+---
+
+### 3️⃣ Build and Launch the Desktop
+
+Start the container:
+
+```bash
+docker compose up --build
+```
+
+The desktop will start in the background and expose:
+
+* **SSH** on port `2222`
+* **VNC** bound internally to `0.0.0.0`, but published only to host loopback
+
+---
+
+### 4️⃣ Connect via SSH + VNC (Recommended)
+
+#### 🔹 No-Config / Default Credentials
+
+From **another machine on the network**, you can immediately create an SSH tunnel using the default password (`changeme`):
+
+```bash
+ssh -p 2222 -L 5900:127.0.0.1:5900 user@<HOST_IP>
+```
+
+When prompted, enter:
+
+```
+changeme
+```
+
+Then connect your VNC client to:
+
+```
+127.0.0.1:5900
+```
+
+---
+
+#### 🔹 Custom Credentials
+
+If you changed the password in your `.env` file, use the same SSH command but authenticate with your custom password instead.
+
+---
+
+### 5️⃣ Local Host Connection (Optional)
+
+If you are running Docker **on the same machine** as your VNC client, you may connect directly to:
+
+```
+127.0.0.1:5900
+```
+
+(SSH tunneling is not required in this case.)
+
+---
+
+### 🧠 Notes
+
+* **VSCodium** launches without sandbox errors and skips all first-run walkthroughs.
+* **Firefox ESR** launches in private mode, with DuckDuckGo as the default search engine, and no onboarding screens.
+* **LXDE session** runs without `systemd` or `logind`, avoiding common container session warnings.
+* **Passwordless sudo** is enabled for the desktop user.
+* SSH tunneling provides encryption for VNC without exposing the VNC port to the network.
+
+---
+
+## Overview
+
+This container provides:
+
+- A lightweight **LXDE desktop** (Openbox + LXPanel + PCManFM)
+- **VSCodium** (container-safe Electron configuration)
+- **Firefox ESR** (fully preconfigured, no first-run UI)
+- **x11vnc + Xvfb** for headless graphical access
+- **OpenSSH server** for encrypted VNC tunneling
+- Passwordless `sudo` for convenience inside the container
+- All configuration managed via `.env` and `docker-compose`
+
+No systemd, no logind, no audio stack, no GPU acceleration — this is a **clean, deterministic remote desktop container**.
+
+---
+
+## Key Features
+
+### Desktop Environment
+- LXDE without `lxsession` (avoids systemd/logind session errors in containers)
+- Papirus icon theme (SVG support fixed and cached)
+- LXPanel launch bar preconfigured with:
+  - Firefox ESR
+  - VSCodium
+  - PCManFM
+  - LXTerminal
+
+### VSCodium
+- Installed from the official maintained `.deb` repository
+- Electron sandbox disabled safely for containers
+- Skips welcome screen, walkthroughs, tips, and telemetry on first launch
+- Configured via a pre-seeded user settings file
+
+### Firefox ESR
+- First-run and post-update pages disabled
+- Always starts in **Private Browsing**
+- DuckDuckGo set as the default search engine
+- New tab content, sponsored items, telemetry, and studies disabled
+- No “default browser” or onboarding prompts
+- Security warning banner mitigated via host sysctl support
+
+### Remote Access & Security
+- **VNC server runs unencrypted inside the container**
+- **VNC is only published to `127.0.0.1` on the host**
+- **SSH (port 2222)** is used for secure network access via port forwarding
+- Password-based SSH authentication enabled
+- Root login via SSH disabled
+- Passwordless `sudo` for the non-root user
+
+---
+
+## Repository Layout
 
 ```
 .
@@ -57,21 +212,134 @@ Defined in `.env`:
 ├── entrypoint.sh
 ├── xstartup
 ├── sample.env
-├── .gitignore
+├── LICENSE.md
 └── README.md
 ```
 
-## Security Notes
+---
 
-* This example exposes VNC on `0.0.0.0:5900`. For local testing that’s fine; for remote use, prefer tunneling over SSH or put it behind a VPN/reverse-proxy.
-* `x11vnc` password auth is enabled. Use a strong password.
-* Do **not** commit your real `.env` to Git—use `sample.env` for sharing.
+## Quick Start
 
-## Known Limitations
+### 1. Create your `.env`
 
-* GPU acceleration is not configured; this is a CPU-rendered headless desktop via `Xvfb`.
-* Real display refresh rates do not apply in this setup.
-* Audio is not provisioned.
+````
+cp sample.env .env
+````
+
+Edit `.env` and set **strong passwords**.
+
+### 2. Build and start the container
+
+```bash
+docker compose up --build
+```
+
+> ⚠️ Changing `USER_PASSWORD` or `ROOT_PASSWORD` requires a rebuild.
+
+---
+
+## Connecting to the Desktop
+
+### Option A: From the Docker host (no SSH)
+
+VNC is published **only to localhost**.
+
+* Host: `127.0.0.1`
+* Port: `5900`
+* Password: `VNC_PASSWORD`
+
+### Option B: From another machine (recommended)
+
+Use an **SSH tunnel**:
+
+```bash
+ssh -p 2222 -L 5900:127.0.0.1:5900 user@<HOST_IP>
+```
+
+Then connect your VNC client to:
+
+* Host: `127.0.0.1`
+* Port: `5900`
+
+All traffic is encrypted by SSH.
+
+---
+
+## Environment Variables
+
+Defined in `.env`:
+
+### Runtime (container start)
+
+| Variable       | Purpose                                       |
+| -------------- | --------------------------------------------- |
+| `VNC_PASSWORD` | VNC authentication password                   |
+| `VNC_GEOMETRY` | Virtual display resolution (e.g. `1920x1080`) |
+| `VNC_DEPTH`    | Color depth (typically `24`)                  |
+
+### Build-time (image creation)
+
+| Variable        | Purpose                        |
+| --------------- | ------------------------------ |
+| `USER_PASSWORD` | Password for the non-root user |
+| `ROOT_PASSWORD` | Root password                  |
+
+---
+
+## User & Privileges
+
+* Default user: `user`
+* `sudo` is configured with **NOPASSWD**
+* SSH uses password authentication
+* Root SSH login is disabled
+* VNC authentication is independent of system passwords
+
+---
+
+## Technical Notes
+
+### Why no `lxsession`?
+
+`lxsession` expects systemd/logind integration. In containers, this produces errors like:
+
+```
+No session for PID …
+```
+
+This setup launches the desktop components directly:
+
+* `lxpanel`
+* `pcmanfm`
+* `openbox-session`
+
+This is intentional and stable.
+
+### Why Xvfb?
+
+* No GPU dependency
+* Deterministic behavior
+* Works cleanly on macOS, Linux, CI, and servers
+
+### Refresh Rate
+
+Xvfb does **not** expose a real refresh rate. Any “59 Hz” or similar display values are artifacts of the VNC client.
+
+---
+
+## Limitations
+
+* No audio support
+* No GPU acceleration
+* No clipboard sync beyond what VNC provides
+* Single-user desktop session
+
+These are **deliberate trade-offs** to keep the image small, predictable, and portable.
+
+---
 
 ## License
-MIT (for this template). Check upstream licenses for included packages.
+
+MIT License.
+See `LICENSE.md` for details.
+
+Upstream components (Debian, Firefox, VSCodium, LXDE, Papirus) retain their respective licenses.

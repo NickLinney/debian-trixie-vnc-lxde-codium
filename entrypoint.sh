@@ -21,10 +21,16 @@ export DESKTOP_SESSION="LXDE"
 if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
   DBUS_SOCKET="${XDG_RUNTIME_DIR}/bus"
   rm -f "${DBUS_SOCKET}" || true
-  # Launch dbus-daemon and capture the address
   DBUS_SESSION_BUS_ADDRESS="$(dbus-daemon --session --fork --address="unix:path=${DBUS_SOCKET}" --print-address)"
   export DBUS_SESSION_BUS_ADDRESS
 fi
+
+# ---- Start SSH daemon (for port-forwarded VNC) ----
+# Requires openssh-server in the image and passwordless sudo for ${USER}.
+sudo mkdir -p /var/run/sshd
+# Ensure host keys exist (some slim-ish images/flows can miss these)
+sudo ssh-keygen -A >/dev/null 2>&1 || true
+sudo /usr/sbin/sshd
 
 # ---- Start Xvfb ----
 Xvfb "${DISPLAY}" -screen 0 "${VNC_GEOMETRY}x${VNC_DEPTH}" -nolisten tcp -ac &
@@ -39,7 +45,6 @@ for _ in $(seq 1 50); do
 done
 
 # ---- Start a lightweight “LXDE-like” session WITHOUT lxsession ----
-# This is the key to avoiding systemd/logind session popups inside containers.
 (
   set -euo pipefail
   lxpanel &
@@ -53,9 +58,8 @@ mkdir -p "${HOME}/.vnc"
 x11vnc -storepasswd "${VNC_PASSWORD}" "${HOME}/.vnc/passwd" >/dev/null 2>&1 || true
 
 # ---- Run VNC server (foreground) ----
-# -forever / -shared: keep session up and allow reconnects
-# -rfbauth: use stored password
-# -listen 0.0.0.0: accept remote connections
+# Bind to 0.0.0.0 inside the container; compose restricts exposure by only publishing
+# 127.0.0.1:5900 on the host. Network users should use SSH port-forwarding via :2222.
 exec x11vnc \
   -forever -shared \
   -rfbauth "${HOME}/.vnc/passwd" \
