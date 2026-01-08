@@ -1,14 +1,23 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
+# Load X resources if present (non-fatal)
 xrdb "$HOME/.Xresources" >/dev/null 2>&1 || true
 
-export XDG_RUNTIME_DIR="/tmp/xdg-runtime-$(id -u)"
+# If entrypoint didn’t set this (or if you ever use a different launcher), ensure it exists.
+: "${XDG_RUNTIME_DIR:=/tmp/xdg-runtime-$(id -u)}"
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
 
-exec dbus-launch --exit-with-session bash -lc '
-  lxpanel &
-  pcmanfm --desktop --profile LXDE &
-  exec openbox-session
-'
+# Provide desktop/session hints (reduces “session” / integration warnings in some apps)
+export XDG_SESSION_TYPE="${XDG_SESSION_TYPE:-x11}"
+export XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP:-LXDE}"
+export DESKTOP_SESSION="${DESKTOP_SESSION:-LXDE}"
+
+# IMPORTANT:
+# Do NOT start dbus-launch here if entrypoint already created the session bus.
+# (Your current deployment uses Xvfb + x11vnc, so this file may not even be used,
+# but keeping it clean prevents double-bus issues if it ever is.)
+lxpanel &
+pcmanfm --desktop --profile LXDE &
+exec openbox-session

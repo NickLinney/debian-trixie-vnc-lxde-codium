@@ -5,30 +5,44 @@ ENV DEBIAN_FRONTEND=noninteractive \
     HOME=/home/user \
     DISPLAY=:0
 
-# Base packages (swap falkon -> firefox-esr) + add theme tool + dbus helpers
+# Base packages + LXDE + VNC + dbus helpers
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         lxde-core at-spi2-core lxterminal pcmanfm \
         lxappearance \
         x11vnc xvfb dbus-x11 dbus-user-session \
-        xauth \
+        xauth x11-utils \
         sudo curl gnupg wget ca-certificates apt-transport-https \
         dumb-init \
         firefox-esr \
         papirus-icon-theme && \
     rm -rf /var/lib/apt/lists/*
 
-# Optional: you can remove this entirely if you want.
-# Keeping it does no harm, but doing it at runtime often fails on some engines.
+# Ensure X11 socket dir exists with correct permissions (prevents _XSERVTransmkdir errors)
 RUN mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix
 
-# VSCodium repo
+# VSCodium repo + install
 RUN curl -fsSL https://gitlab.com/paulcarroty/vscodium-deb-rpm-repo/raw/master/pub.gpg \
       | gpg --dearmor -o /usr/share/keyrings/vscodium-archive-keyring.gpg && \
     echo "deb [signed-by=/usr/share/keyrings/vscodium-archive-keyring.gpg arch=arm64] https://paulcarroty.gitlab.io/vscodium-deb-rpm-repo/debs/ vscodium main" \
       > /etc/apt/sources.list.d/vscodium.list && \
     apt-get update && apt-get install -y --no-install-recommends codium && \
     rm -rf /var/lib/apt/lists/*
+
+# --- Codium sandbox fix (container-friendly) ---
+# 1) Create a wrapper and put it FIRST in PATH
+# 2) Patch codium.desktop to use the wrapper (so panel/menu clicks work)
+# 3) Do NOT overwrite /usr/bin/codium (keeps dpkg-managed files intact)
+RUN printf '%s\n' \
+  '#!/bin/sh' \
+  '# Electron/Chromium sandbox often fails inside Docker due to restricted namespaces/seccomp.' \
+  '# --disable-dev-shm-usage helps if /dev/shm is small (common in containers).' \
+  'exec /usr/share/codium/codium --no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage "$@"' \
+  > /usr/local/bin/codium && \
+  chmod 0755 /usr/local/bin/codium && \
+  if [ -f /usr/share/applications/codium.desktop ]; then \
+    sed -i 's|^Exec=.*|Exec=/usr/local/bin/codium %F|g' /usr/share/applications/codium.desktop; \
+  fi
 
 # Create user + set passwords + passwordless sudo
 RUN useradd -m -s /bin/bash "${USER}" && \
