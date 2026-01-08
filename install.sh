@@ -1,131 +1,80 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ------------------------------------------------------------
-# Debian Trixie LXDE Desktop — Bootstrap Installer
+# install.sh
+# Usage:
+#   curl -fsSL https://raw.githubusercontent.com/<owner>/<repo>/<branch>/install.sh | bash
+# Options:
+#   --build   : run docker compose build after download
+#   --deploy  : run docker compose up -d --build after download
 #
-# Default repository:
-#   https://github.com/NickLinney/debian-trixie-vnc-lxde-codium
-#
-# One-line install (download only):
-#   curl -fsSL https://raw.githubusercontent.com/NickLinney/debian-trixie-vnc-lxde-codium/main/install.sh | bash
-#
-# Download + build:
-#   curl -fsSL https://raw.githubusercontent.com/NickLinney/debian-trixie-vnc-lxde-codium/main/install.sh | bash -s -- --build
-#
-# Download + build + deploy (docker compose up):
-#   curl -fsSL https://raw.githubusercontent.com/NickLinney/debian-trixie-vnc-lxde-codium/main/install.sh | bash -s -- --deploy
-#
-# Fork-friendly overrides (optional env vars):
-#   GITHUB_OWNER=YourName GITHUB_REPO=your-repo GITHUB_REF=main INSTALL_DIR=custom-dir ...
-# ------------------------------------------------------------
+# Env overrides (optional):
+#   REPO_URL=https://github.com/owner/repo
+#   BRANCH=main
+#   INSTALL_DIR=./repo-dir-name
 
-usage() {
-  cat <<'EOF'
-Usage:
-  install.sh [--build] [--deploy] [--help]
+DEFAULT_REPO_URL="https://github.com/NickLinney/debian-trixie-vnc-lxde-codium"
+DEFAULT_BRANCH="main"
 
-Behavior:
-  (no flags)   Download + unzip + cleanup only.
-  --build      Download + unzip + cleanup, then run: docker compose build
-  --deploy     Download + unzip + cleanup, then run: docker compose up --build -d
+REPO_URL="${REPO_URL:-$DEFAULT_REPO_URL}"
+BRANCH="${BRANCH:-$DEFAULT_BRANCH}"
 
-Notes:
-  - --deploy implies build.
-  - The repo will be placed into INSTALL_DIR (default: the repo name).
-  - This script does not require git; it downloads a GitHub ZIP.
-EOF
-}
-
-# --- Parse flags ---
 DO_BUILD=0
 DO_DEPLOY=0
 
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --build)
-      DO_BUILD=1
-      shift
-      ;;
-    --deploy)
-      DO_DEPLOY=1
-      DO_BUILD=1
-      shift
-      ;;
-    --help|-h)
-      usage
-      exit 0
-      ;;
-    *)
-      echo "ERROR: unknown argument: $1" >&2
-      echo >&2
-      usage >&2
-      exit 1
-      ;;
+for arg in "$@"; do
+  case "${arg}" in
+    --build)  DO_BUILD=1 ;;
+    --deploy) DO_DEPLOY=1 ;;
+    *) ;;
   esac
 done
 
-# --- Repository defaults (override via environment if forked) ---
-GITHUB_OWNER="${GITHUB_OWNER:-NickLinney}"
-GITHUB_REPO="${GITHUB_REPO:-debian-trixie-vnc-lxde-codium}"
-GITHUB_REF="${GITHUB_REF:-main}"
+# Derive install dir name from repo URL if not provided
+REPO_BASENAME="$(basename "${REPO_URL}")"
+INSTALL_DIR="${INSTALL_DIR:-./${REPO_BASENAME}}"
 
-# Destination directory
-INSTALL_DIR="${INSTALL_DIR:-${GITHUB_REPO}}"
+# Normalize github URL to archive URL
+# Example:
+#   https://github.com/OWNER/REPO -> https://github.com/OWNER/REPO/archive/refs/heads/main.zip
+ARCHIVE_URL="${REPO_URL}/archive/refs/heads/${BRANCH}.zip"
 
-ZIP_URL="https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/archive/refs/heads/${GITHUB_REF}.zip"
-
-need_cmd() {
-  command -v "$1" >/dev/null 2>&1 || {
-    echo "ERROR: missing required command: $1" >&2
-    exit 1
-  }
-}
-
-need_one_of() {
-  for c in "$@"; do
-    if command -v "$c" >/dev/null 2>&1; then
-      echo "$c"
-      return 0
-    fi
-  done
-  return 1
-}
-
-need_cmd curl
-
-# Create temp working directory
 TMP_DIR="$(mktemp -d)"
-cleanup() { rm -rf "${TMP_DIR}"; }
+ARCHIVE_ZIP="${TMP_DIR}/repo.zip"
+
+cleanup() {
+  rm -rf "${TMP_DIR}" || true
+}
 trap cleanup EXIT
 
-ZIP_PATH="${TMP_DIR}/${GITHUB_REPO}.zip"
-EXTRACT_DIR="${TMP_DIR}/extract"
-mkdir -p "${EXTRACT_DIR}"
-
-echo "Downloading repository:"
-echo "  ${ZIP_URL}"
+echo "[info] Repo:   ${REPO_URL}"
+echo "[info] Branch: ${BRANCH}"
+echo "[info] Dest:   ${INSTALL_DIR}"
 echo
 
-curl -fsSL -o "${ZIP_PATH}" "${ZIP_URL}"
-
-# Extract ZIP (prefer unzip; fallback to bsdtar)
-EXTRACTOR="$(need_one_of unzip bsdtar || true)"
-if [[ -z "${EXTRACTOR}" ]]; then
-  echo "ERROR: need 'unzip' or 'bsdtar' to extract the archive." >&2
+# Basic dependency check
+need_cmd() { command -v "$1" >/dev/null 2>&1; }
+if ! need_cmd curl; then
+  echo "ERROR: curl is required" >&2
+  exit 1
+fi
+if ! need_cmd unzip; then
+  echo "ERROR: unzip is required" >&2
   exit 1
 fi
 
-if [[ "${EXTRACTOR}" == "unzip" ]]; then
-  unzip -q "${ZIP_PATH}" -d "${EXTRACT_DIR}"
-else
-  bsdtar -xf "${ZIP_PATH}" -C "${EXTRACT_DIR}"
-fi
+# Download archive
+echo "[info] Downloading ${ARCHIVE_URL}"
+curl -fsSL "${ARCHIVE_URL}" -o "${ARCHIVE_ZIP}"
 
-# GitHub zips always contain a single top-level directory
-TOP_DIR="$(find "${EXTRACT_DIR}" -mindepth 1 -maxdepth 1 -type d | head -n 1 || true)"
+# Extract
+echo "[info] Extracting..."
+unzip -q "${ARCHIVE_ZIP}" -d "${TMP_DIR}"
+
+# GitHub archives extract as REPO-BRANCH (or REPO-main)
+TOP_DIR="$(find "${TMP_DIR}" -maxdepth 1 -type d -name "${REPO_BASENAME}-*" | head -n 1)"
 if [[ -z "${TOP_DIR}" || ! -d "${TOP_DIR}" ]]; then
-  echo "ERROR: could not locate extracted repository directory." >&2
+  echo "ERROR: could not locate extracted directory" >&2
   exit 1
 fi
 
@@ -137,51 +86,35 @@ fi
 
 mv "${TOP_DIR}" "${INSTALL_DIR}"
 
+# If no .env exists, auto-generate it from sample.env (no-config quickstart)
+if [ ! -f "${INSTALL_DIR}/.env" ]; then
+  if [ -f "${INSTALL_DIR}/sample.env" ]; then
+    cp "${INSTALL_DIR}/sample.env" "${INSTALL_DIR}/.env"
+    echo "[info] Created ${INSTALL_DIR}/.env from sample.env"
+  else
+    echo "[warn] sample.env not found; skipping .env generation"
+  fi
+fi
+
 echo
 echo "✔ Repository downloaded successfully"
 echo "  Location: ${INSTALL_DIR}"
 echo
 
 # --- Optional build/deploy ---
-if [[ "${DO_BUILD}" -eq 1 ]]; then
-  need_cmd docker
-
-  # Prefer "docker compose" (plugin). Fall back to "docker-compose" if present.
-  if docker compose version >/dev/null 2>&1; then
-    COMPOSE_CMD=(docker compose)
-  elif command -v docker-compose >/dev/null 2>&1; then
-    COMPOSE_CMD=(docker-compose)
-  else
-    echo "ERROR: Docker Compose not found (need 'docker compose' plugin or 'docker-compose')." >&2
-    exit 1
-  fi
-
-  echo "Building with Compose..."
-  ( cd "${INSTALL_DIR}" && "${COMPOSE_CMD[@]}" build )
-
-  if [[ "${DO_DEPLOY}" -eq 1 ]]; then
-    echo
-    echo "Deploying (docker compose up --build -d)..."
-    ( cd "${INSTALL_DIR}" && "${COMPOSE_CMD[@]}" up --build -d )
-    echo
-    echo "✔ Deployed."
-    echo
-  else
-    echo
-    echo "✔ Build complete."
-    echo
-  fi
-fi
-
-echo "Next steps:"
-echo "  cd \"${INSTALL_DIR}\""
-echo "  cp sample.env .env"
 if [[ "${DO_DEPLOY}" -eq 1 ]]; then
-  echo "  (already deployed; you can check logs with: docker compose logs -f)"
+  echo "[info] Deploying (docker compose up -d --build)..."
+  (cd "${INSTALL_DIR}" && docker compose up -d --build)
+  echo
+  echo "✔ Deployed"
+elif [[ "${DO_BUILD}" -eq 1 ]]; then
+  echo "[info] Building (docker compose build)..."
+  (cd "${INSTALL_DIR}" && docker compose build)
+  echo
+  echo "✔ Built"
 else
+  echo "[info] Next steps:"
+  echo "  cd ${INSTALL_DIR}"
+  echo "  # .env already created from sample.env (if it was missing)"
   echo "  docker compose up --build"
 fi
-echo
-echo "For network access:"
-echo "  ssh -p 2222 -L 5900:127.0.0.1:5900 user@<HOST_IP>"
-echo "  then connect your VNC client to 127.0.0.1:5900"

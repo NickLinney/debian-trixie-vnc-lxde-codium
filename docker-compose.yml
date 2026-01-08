@@ -4,9 +4,9 @@ services:
     build:
       context: .
       args:
-        # Pulled from .env at build time (or your shell environment)
-        USER_PASSWORD: ${USER_PASSWORD}
-        ROOT_PASSWORD: ${ROOT_PASSWORD}
+        # Build-time passwords (pulled from .env; changing them requires a rebuild)
+        USER_PASSWORD: ${USER_PASSWORD:-changeme}
+        ROOT_PASSWORD: ${ROOT_PASSWORD:-changeme}
 
     container_name: debian-trixie-vnc-lxde-codium
 
@@ -14,20 +14,27 @@ services:
       # Network-ready: expose SSH for tunneling
       - "2222:22"
 
-      # Optional (host-only direct VNC): uncomment if you want to connect from the Docker host
-      # without SSH. This does NOT expose VNC to your LAN/WAN.
+      # Optional (host-only direct VNC): connect from the Docker host without SSH.
+      # This does NOT expose VNC to your LAN/WAN.
       - "127.0.0.1:5900:5900"
 
-    # Helps eliminate Firefox “some security features may offer less protection…” by enabling
-    # unprivileged user namespaces (when supported by the host).
-    sysctls:
-      - kernel.unprivileged_userns_clone=1
+    # Load defaults from .env if present (install.sh will create it from sample.env)
+    env_file:
+      - .env
 
-    # Optional quality-of-life
+    # Runtime settings (environment values override env_file)
     environment:
-      VNC_PASSWORD: "changeme"
-      VNC_GEOMETRY: "1920x1080"
-      VNC_DEPTH: "24"
+      VNC_PASSWORD: ${VNC_PASSWORD:-changeme}
+      VNC_GEOMETRY: ${VNC_GEOMETRY:-1920x1080}
+      VNC_DEPTH: ${VNC_DEPTH:-24}
+
+    # NOTE (Docker Desktop macOS/Windows):
+    # This sysctl is not namespaced, so Docker Desktop will fail to start the container with:
+    # "sysctl ... is not in a separate kernel namespace"
+    #
+    # On a Linux host, you can enable it on the host and/or re-enable this block.
+    # sysctls:
+    #   - kernel.unprivileged_userns_clone=1
 
     # Optional, but recommended for Electron apps / browsers
     shm_size: "512m"
