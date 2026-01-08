@@ -13,10 +13,17 @@ RUN apt-get update && \
         x11vnc xvfb dbus-x11 dbus-user-session \
         xauth x11-utils \
         sudo curl gnupg wget ca-certificates apt-transport-https \
-        dumb-init \
-        firefox-esr \
-        papirus-icon-theme && \
-    rm -rf /var/lib/apt/lists/*
+        dumb-init firefox-esr \
+        hicolor-icon-theme \
+        shared-mime-info \
+        desktop-file-utils \
+        libgtk-3-bin \
+        papirus-icon-theme \
+        # --- Critical for Papirus: SVG icon rendering support ---
+        librsvg2-common \
+        libgdk-pixbuf-2.0-0 \
+        libgdk-pixbuf2.0-bin \
+    && rm -rf /var/lib/apt/lists/*
 
 # Ensure X11 socket dir exists with correct permissions (prevents _XSERVTransmkdir errors)
 RUN mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix
@@ -51,6 +58,17 @@ RUN useradd -m -s /bin/bash "${USER}" && \
     adduser "${USER}" sudo && \
     printf '%s\n' "${USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/010_${USER}_nopasswd && \
     chmod 0440 /etc/sudoers.d/010_${USER}_nopasswd
+
+# --- Icon + MIME plumbing (force caches that slim images sometimes miss) ---
+# 1) Ensure SVG loader is registered (Papirus is mostly SVG)
+# 2) Rebuild icon caches for Papirus + hicolor
+# 3) Update MIME database for file-type icons
+RUN gdk-pixbuf-query-loaders --update-cache || true && \
+    gtk-update-icon-cache -f /usr/share/icons/Papirus || true && \
+    gtk-update-icon-cache -f /usr/share/icons/Papirus-Dark || true && \
+    gtk-update-icon-cache -f /usr/share/icons/Papirus-Light || true && \
+    gtk-update-icon-cache -f /usr/share/icons/hicolor || true && \
+    update-mime-database /usr/share/mime || true
 
 # Force Papirus as the GTK icon theme (LXDE reads GTK settings)
 RUN mkdir -p ${HOME}/.config/gtk-3.0 && \
