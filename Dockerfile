@@ -19,7 +19,6 @@ RUN apt-get update && \
         desktop-file-utils \
         libgtk-3-bin \
         papirus-icon-theme \
-        # --- Critical for Papirus: SVG icon rendering support ---
         librsvg2-common \
         libgdk-pixbuf-2.0-0 \
         libgdk-pixbuf2.0-bin \
@@ -27,6 +26,41 @@ RUN apt-get update && \
 
 # Ensure X11 socket dir exists with correct permissions (prevents _XSERVTransmkdir errors)
 RUN mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix
+
+# --- Feature: Firefox ESR hardened defaults (no first-run, minimal UI, DDG, always private) ---
+RUN mkdir -p /etc/firefox/policies && \
+    printf '%s\n' \
+      '{' \
+      '  "policies": {' \
+      '    "DisableAppUpdate": true,' \
+      '    "DisableTelemetry": true,' \
+      '    "DisableFirefoxStudies": true,' \
+      '    "DontCheckDefaultBrowser": true,' \
+      '    "NoDefaultBookmarks": true,' \
+      '    "OverrideFirstRunPage": "",' \
+      '    "OverridePostUpdatePage": "",' \
+      '    "Preferences": {' \
+      '      "browser.shell.checkDefaultBrowser": { "Value": false, "Status": "locked" },' \
+      '      "browser.startup.homepage": { "Value": "about:blank" },' \
+      '      "browser.newtabpage.enabled": { "Value": false },' \
+      '      "browser.newtabpage.activity-stream.feeds.topsites": { "Value": false },' \
+      '      "browser.newtabpage.activity-stream.feeds.section.topstories": { "Value": false },' \
+      '      "browser.newtabpage.activity-stream.feeds.section.highlights": { "Value": false },' \
+      '      "browser.newtabpage.activity-stream.feeds.snippets": { "Value": false },' \
+      '      "browser.newtabpage.activity-stream.showSponsored": { "Value": false },' \
+      '      "browser.newtabpage.activity-stream.showSponsoredTopSites": { "Value": false },' \
+      '      "browser.search.defaultenginename": { "Value": "DuckDuckGo" },' \
+      '      "browser.search.order.1": { "Value": "DuckDuckGo" },' \
+      '      "browser.search.suggest.enabled": { "Value": false },' \
+      '      "browser.urlbar.suggest.searches": { "Value": false },' \
+      '      "privacy.donottrackheader.enabled": { "Value": true },' \
+      '      "privacy.trackingprotection.enabled": { "Value": true },' \
+      '      "privacy.trackingprotection.socialtracking.enabled": { "Value": true },' \
+      '      "browser.privatebrowsing.autostart": { "Value": true, "Status": "locked" }' \
+      '    }' \
+      '  }' \
+      '}' \
+      > /etc/firefox/policies/policies.json
 
 # VSCodium repo + install
 RUN curl -fsSL https://gitlab.com/paulcarroty/vscodium-deb-rpm-repo/raw/master/pub.gpg \
@@ -59,10 +93,20 @@ RUN useradd -m -s /bin/bash "${USER}" && \
     printf '%s\n' "${USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/010_${USER}_nopasswd && \
     chmod 0440 /etc/sudoers.d/010_${USER}_nopasswd
 
+# --- Feature: VSCodium skip first-run / walkthrough ---
+RUN mkdir -p ${HOME}/.config/VSCodium/User && \
+    printf '%s\n' \
+      '{' \
+      '  "workbench.startupEditor": "none",' \
+      '  "workbench.welcomePage.walkthroughs.openOnInstall": false,' \
+      '  "workbench.tips.enabled": false,' \
+      '  "update.mode": "none",' \
+      '  "telemetry.telemetryLevel": "off"' \
+      '}' \
+      > ${HOME}/.config/VSCodium/User/settings.json && \
+    chown -R ${USER}:${USER} ${HOME}/.config/VSCodium
+
 # --- Icon + MIME plumbing (force caches that slim images sometimes miss) ---
-# 1) Ensure SVG loader is registered (Papirus is mostly SVG)
-# 2) Rebuild icon caches for Papirus + hicolor
-# 3) Update MIME database for file-type icons
 RUN gdk-pixbuf-query-loaders --update-cache || true && \
     gtk-update-icon-cache -f /usr/share/icons/Papirus || true && \
     gtk-update-icon-cache -f /usr/share/icons/Papirus-Dark || true && \
